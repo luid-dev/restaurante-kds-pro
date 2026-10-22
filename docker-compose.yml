@@ -1,0 +1,151 @@
+# Stack completo de demostración: PostgreSQL 16, Redis 7, API Laravel (PHP-FPM + Nginx),
+# Reverb (WebSockets), worker de colas y SPA compilada detrás de Nginx.
+# Un solo puerto público (APP_PORT): el SPA, la API y los WebSockets comparten origen,
+# así la sesión Sanctum viaja en cookie first-party y no hay CORS con credenciales.
+# Las variables secretas viven en .env (lo genera setup-demo.sh).
+name: restaurante-kds-pro
+
+x-backend-env: &backend-env
+  APP_NAME: "KDS Pro"
+  APP_ENV: demo
+  APP_KEY: ${APP_KEY:?Ejecute ./setup-demo.sh para generar .env}
+  APP_DEBUG: "false"
+  APP_URL: http://localhost:${APP_PORT:-8088}
+  FRONTEND_URL: http://localhost:${APP_PORT:-8088}
+  APP_DEMO_MODE: "true"
+  APP_LOCALE: es
+  APP_FALLBACK_LOCALE: en
+  APP_FAKER_LOCALE: es_PE
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: warning
+  DB_CONNECTION: pgsql
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_DATABASE: ${DB_DATABASE:-kds_demo}
+  DB_USERNAME: ${DB_USERNAME:-kds}
+  DB_PASSWORD: ${DB_PASSWORD:?Ejecute ./setup-demo.sh para generar .env}
+  SESSION_DRIVER: redis
+  SESSION_LIFETIME: "480"
+  SESSION_ENCRYPT: "true"
+  SESSION_SECURE_COOKIE: "false"
+  SESSION_SAME_SITE: lax
+  SANCTUM_STATEFUL_DOMAINS: localhost:${APP_PORT:-8088},127.0.0.1:${APP_PORT:-8088}
+  CORS_ALLOWED_ORIGINS: http://localhost:${APP_PORT:-8088},http://127.0.0.1:${APP_PORT:-8088}
+  BROADCAST_CONNECTION: reverb
+  QUEUE_CONNECTION: redis
+  CACHE_STORE: redis
+  CACHE_PREFIX: kds-cache-
+  REDIS_CLIENT: predis
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PREFIX: kds-
+  REVERB_APP_ID: ${REVERB_APP_ID:?Ejecute ./setup-demo.sh para generar .env}
+  REVERB_APP_KEY: ${REVERB_APP_KEY:?Ejecute ./setup-demo.sh para generar .env}
+  REVERB_APP_SECRET: ${REVERB_APP_SECRET:?Ejecute ./setup-demo.sh para generar .env}
+  # La API publica eventos a Reverb por la red interna; el navegador entra por /app del proxy.
+  REVERB_HOST: reverb
+  REVERB_PORT: "8080"
+  REVERB_SCHEME: http
+  REVERB_SERVER_HOST: 0.0.0.0
+  REVERB_SERVER_PORT: "8080"
+  REVERB_ALLOWED_ORIGINS: localhost,127.0.0.1
+  PIN_PEPPER: ${PIN_PEPPER:?Ejecute ./setup-demo.sh para generar .env}
+  PIN_SESSION_IDLE_MINUTES: "30"
+  ACTIVITYLOG_ENABLED: "true"
+  MAIL_MAILER: log
+  SUNAT_SEND_ENABLED: "false"
+
+x-backend: &backend
+  image: restaurante-kds-pro/backend:demo
+  restart: unless-stopped
+  environment: *backend-env
+  volumes:
+    - backend-storage:/var/www/html/storage
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-kds_demo}
+      POSTGRES_USER: ${DB_USERNAME:-kds}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Ejecute ./setup-demo.sh para generar .env}
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -q -d \"$${POSTGRES_DB}\" -U \"$${POSTGRES_USER}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    <<: *backend
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+
+  queue:
+    <<: *backend
+    command: ["php", "artisan", "queue:work", "--tries=5", "--sleep=3", "--max-time=3600"]
+    depends_on:
+      backend:
+        condition: service_started
+
+  reverb:
+    <<: *backend
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+    depends_on:
+      backend:
+        condition: service_started
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./docker/nginx/api.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+      args:
+        VITE_APP_NAME: "KDS Pro"
+        VITE_API_BASE_URL: /api/v1
+        VITE_REVERB_APP_KEY: ${REVERB_APP_KEY:?Ejecute ./setup-demo.sh para generar .env}
+        VITE_REVERB_HOST: localhost
+        VITE_REVERB_PORT: ${APP_PORT:-8088}
+        VITE_REVERB_SCHEME: http
+        VITE_DEMO_MODE: "true"
+    image: restaurante-kds-pro/frontend:demo
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${APP_PORT:-8088}:8080"
+    depends_on:
+      - nginx
+      - reverb
+
+volumes:
+  postgres-data:
+  redis-data:
+  backend-storage:
