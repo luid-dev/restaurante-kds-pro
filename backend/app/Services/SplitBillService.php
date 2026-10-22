@@ -189,8 +189,12 @@ final readonly class SplitBillService
             return new ChargeBreakdown(ChargeMode::Full, [], Decimal::sub($balance, $remainingService, 2), $remainingService, $balance, true);
         }
 
+        // El saldo completo omite los platos ya pagados en un cobro anterior por platos.
         $selected = $mode === ChargeMode::Full
-            ? $items->map(static fn (OrderItem $item): ChargeLineData => new ChargeLineData($item->uuid, $item->unpaidQuantity()))->all()
+            ? $items->filter(static fn (OrderItem $item): bool => bccomp($item->unpaidQuantity(), '0', 2) > 0)
+                ->map(static fn (OrderItem $item): ChargeLineData => new ChargeLineData($item->uuid, $item->unpaidQuantity()))
+                ->values()
+                ->all()
             : $requestedLines;
 
         $lines = $this->resolveLines($order, $items, $selected, $this->grossFactor($order));

@@ -251,6 +251,36 @@ final class DiningOrderLifecycleTest extends TestCase
     }
 
     #[Test]
+    public function the_remaining_balance_is_charged_in_full_after_a_dish_was_paid_separately(): void
+    {
+        $order = $this->openTable('M-05');
+        $this->sendItems($order, [['sku' => 'BRA-002', 'quantity' => '1'], ['sku' => 'BEB-002', 'quantity' => '2']])->assertOk();
+        $this->openCashSession();
+        $chickenId = $order->items()->whereHas('menuItem', fn ($query) => $query->where('sku', 'BRA-002'))->sole()->uuid;
+
+        // Un comensal paga su 1/2 pollo completo: ese plato queda sin saldo.
+        $this->charge($order, [
+            'mode' => 'ITEMS', 'lines' => [['order_item_id' => $chickenId, 'quantity' => '1']], 'series' => 'B001', 'format' => 'DETAILED',
+            'customer' => ['document_type' => '0'], 'payments' => [['method' => 'CASH', 'amount' => '38.00']],
+        ])->assertCreated()->assertJsonPath('data.order.balance', '9.00');
+
+        // "Cobrar el resto" solo factura los platos con saldo pendiente.
+        $this->postJson("/api/v1/orders/{$order->uuid}/charges/quote", ['mode' => 'FULL', 'format' => 'DETAILED'])
+            ->assertOk()
+            ->assertJsonPath('data.total', '9.00')
+            ->assertJsonPath('data.settles_order', true);
+
+        $this->charge($order, [
+            'mode' => 'FULL', 'series' => 'B001', 'format' => 'DETAILED',
+            'customer' => ['document_type' => '0'], 'payments' => [['method' => 'YAPE', 'amount' => '9.00']],
+        ])->assertCreated()
+            ->assertJsonPath('data.items.*.description', ['INKA KOLA PERSONAL 500ML'])
+            ->assertJsonPath('data.order.balance', '0.00');
+
+        $this->assertSame(TableStatus::Available, $this->table('M-05')->status);
+    }
+
+    #[Test]
     public function an_invalid_invoice_request_charges_nothing_and_consumes_no_correlative(): void
     {
         $order = $this->openTable('M-04');
