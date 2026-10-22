@@ -1,0 +1,15 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 9
+    paths:
+        - app/
+        - bootstrap/app.php
+        - database/
+        - routes/
+        - tests/
+    excludePaths:
+        # Stub publicado sin cambios por spatie/laravel-permission: se mantiene idéntico al upstream.
+        - database/migrations/*_create_permission_tables.php
+    tmpDir: storage/framework/cache/phpstan
