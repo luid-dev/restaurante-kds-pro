@@ -149,5 +149,5 @@ completamente adaptable a sus requerimientos operativos (múltiples salones, imp
 integración con balanzas o pasarelas de pago). Contácteme para coordinar la personalización y puesta en marcha
 para su empresa.
 
-- Correo: _(por completar)_
-- Perfil profesional o sitio web: _(por completar)_
+- LinkedIn: [linkedin.com/in/luidman-zanes](https://www.linkedin.com/in/luidman-zanes/)
+- GitHub: [github.com/luid-dev](https://github.com/luid-dev)
