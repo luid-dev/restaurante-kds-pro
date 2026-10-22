@@ -32,7 +32,7 @@ guardan en `NUMERIC(14,4)` y se calculan con BCMath, sin aritmética de punto fl
 Con Docker instalado, un solo comando levanta el sistema completo con una pollería de demostración:
 
 ```bash
-git clone https://github.com/<usuario>/restaurante-kds-pro.git
+git clone https://github.com/luid-dev/restaurante-kds-pro.git
 cd restaurante-kds-pro
 ./setup-demo.sh
 ```

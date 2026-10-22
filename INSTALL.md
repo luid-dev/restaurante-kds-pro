@@ -32,7 +32,7 @@ Contenido:
 ### Instalación
 
 ```bash
-git clone https://github.com/<usuario>/restaurante-kds-pro.git
+git clone https://github.com/luid-dev/restaurante-kds-pro.git
 cd restaurante-kds-pro
 ./setup-demo.sh
 ```
